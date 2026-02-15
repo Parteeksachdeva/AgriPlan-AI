@@ -1,27 +1,22 @@
-# Design Document: AgriPlan AI
+# Design Document: AgriPlan AI — Intelligent Crop Planning Platform
 
 ## Overview
 
-AgriPlan AI is an intelligent agricultural decision support platform that helps farmers optimize crop selection through constrained optimization under uncertainty. The system balances expected profit maximization with risk mitigation while respecting real-world constraints (equipment, soil, rotation, harvest timing).
+AgriPlan AI is a decision-support platform that helps farmers choose their next crop by analyzing multiple real-world factors through different AI technologies:
 
-This design targets a hackathon MVP (2-3 weeks, 4-person team) focusing on core recommendation logic, Monte Carlo simulation, and acreage allocation optimization. The architecture prioritizes modularity to enable rapid iteration and future extensibility.
+- **ML Models** (XGBoost / Scikit-learn): Yield prediction and multi-factor crop scoring — combining land conditions, market prices, subsidies, weather, crop rotation history, locality, and demand
+- **LLM** (Anthropic Claude API): Natural language explanations that translate ML outputs into farmer-friendly advice, incorporating subsidy details and local context
+- **Conversational AI** (LangChain): Natural language query interface so farmers can ask questions like "What should I grow after rice?" or "Which crops have MSP this season?"
+
+The platform targets Indian agriculture as its primary context (MSP, PMFBY, state schemes) but is designed to be extensible to other regions.
 
 ### Key Design Principles
 
-1. **Separation of Concerns**: Clear boundaries between data ingestion, optimization logic, and presentation
-2. **Probabilistic Reasoning**: Monte Carlo simulation for profit uncertainty quantification
-3. **Constraint-Based Optimization**: Explicit modeling of equipment, soil, rotation, and harvest constraints
-4. **Explainability**: Transparent factor attribution for all recommendations
-5. **MVP-First**: Focus on single-season optimization with optional next-season planning
-
-### Technology Stack
-
-- **Backend**: Python 3.11+ (FastAPI for API layer)
-- **Optimization**: SciPy for constrained optimization, NumPy for Monte Carlo simulation
-- **Data Storage**: PostgreSQL for farm profiles, Redis for caching weather/price data
-- **External APIs**: OpenWeatherMap (weather), Alpha Vantage or similar (commodity prices)
-- **Frontend**: React with Recharts for visualization
-- **Deployment**: Docker containers, AWS Lambda for serverless functions
+1. **Multi-Factor Decisions**: Crop recommendations are never based on a single factor — they weigh land, market, subsidies, weather, rotation, and demand together
+2. **Different AI for Different Jobs**: ML for numerical prediction/scoring, LLM for explanation/conversation — each technology where it's strongest
+3. **Always Useful**: Every AI component has a non-AI fallback, so the system always returns results
+4. **Modular**: Clean interfaces between components so the team can work in parallel
+5. **Farmer-First**: All outputs are in simple, actionable language — no technical jargon exposed to users
 
 ## Architecture
 
@@ -29,1165 +24,1117 @@ This design targets a hackathon MVP (2-3 weeks, 4-person team) focusing on core 
 
 ```mermaid
 graph TB
-    subgraph "Presentation Layer"
-        UI[React Frontend]
-        ReportGen[PDF Report Generator]
+    subgraph "Frontend"
+        UI[React Dashboard]
     end
-    
+
     subgraph "API Layer"
-        API[FastAPI REST API]
-        Auth[Authentication Service]
+        API[FastAPI]
     end
-    
-    subgraph "Core Logic Layer"
-        RecEngine[Recommendation Engine]
-        MCSimulator[Monte Carlo Simulator]
-        AllocOptimizer[Allocation Optimizer]
-        RiskAnalyzer[Risk Analyzer]
-        RotationPlanner[Rotation Planner]
-        SubsidyEval[Subsidy Evaluator]
+
+    subgraph "AI/ML Services"
+        CR[Crop Recommender]
+        YP[Yield Predictor]
+        LE[LLM Explainer]
+        CI[Conversational Interface - LangChain]
     end
-    
+
+    subgraph "Data Services"
+        FP[Feature Pipeline]
+        SL[Subsidy Lookup]
+        SB[Statistical Baseline]
+    end
+
+    subgraph "External"
+        LLM[LLM API]
+        WD[Weather Data]
+    end
+
     subgraph "Data Layer"
-        FarmDB[(Farm Profile DB)]
-        CropDB[(Crop Knowledge Base)]
-        Cache[(Redis Cache)]
+        FD[(Farm & Yield Data)]
+        MD[(Market Price Data)]
+        SD[(Subsidy & Scheme Data)]
+        ML[(Model Files)]
+        DB[(SQLite)]
     end
-    
-    subgraph "External Services"
-        WeatherAPI[Weather API]
-        PriceAPI[Price API]
-    end
-    
+
     UI --> API
-    API --> Auth
-    API --> RecEngine
-    API --> ReportGen
-    
-    RecEngine --> MCSimulator
-    RecEngine --> AllocOptimizer
-    RecEngine --> RiskAnalyzer
-    RecEngine --> RotationPlanner
-    RecEngine --> SubsidyEval
-    
-    RecEngine --> FarmDB
-    RecEngine --> CropDB
-    RecEngine --> Cache
-    
-    RecEngine --> WeatherAPI
-    RecEngine --> PriceAPI
-    
-    MCSimulator --> Cache
-    AllocOptimizer --> RiskAnalyzer
+    API --> CR
+    API --> YP
+    API --> CI
+    API --> SL
+
+    CR --> FP
+    CR --> SL
+    YP --> FP
+    CR --> LE
+    YP --> LE
+    CI --> LLM
+    CI --> CR
+    CI --> YP
+    CI --> SL
+
+    CR --> SB
+    YP --> SB
+
+    FP --> FD
+    FP --> MD
+    FP --> SD
+    FP --> WD
+    FP --> DB
+
+    SL --> SD
+
+    YP --> ML
+    CR --> ML
+
+    LE --> LLM
 ```
 
-### Component Responsibilities
+### Use Case Diagram
 
-**Recommendation Engine**: Orchestrates the entire recommendation pipeline, coordinates all sub-components, applies constraints, ranks crops by profit score with risk tiebreaker.
+```mermaid
+graph LR
+    Farmer((Farmer))
+    Admin((Admin))
 
-**Monte Carlo Simulator**: Performs probabilistic profit simulation by varying yield and price within historical variance ranges, computes expected profit and percentile scenarios.
+    subgraph "AgriPlan AI Platform"
+        UC1[Get Crop Recommendations]
+        UC2[Predict Yield for a Crop]
+        UC3[View Government Subsidies]
+        UC4[Ask Questions via Chat]
+        UC5[Compare Crop Options]
+        UC6[View Dashboard & Charts]
+        UC7[Enter Farm Profile]
+        UC8[Train / Retrain ML Models]
+        UC9[Update Subsidy Dataset]
+        UC10[Monitor Model Health]
+    end
 
-**Allocation Optimizer**: Solves constrained optimization problem to allocate acreage among top crops, balancing profit maximization with risk reduction and equipment constraints.
+    subgraph "External Systems"
+        EX1[LLM API]
+        EX2[Weather Data Source]
+        EX3[Market Price Data]
+    end
 
-**Risk Analyzer**: Computes risk scores based on rainfall variability and price volatility, provides risk mitigation recommendations for high-risk crops.
+    Farmer --> UC7
+    Farmer --> UC1
+    Farmer --> UC2
+    Farmer --> UC3
+    Farmer --> UC4
+    Farmer --> UC5
+    Farmer --> UC6
 
-**Rotation Planner**: Evaluates crop rotation compatibility, prevents consecutive planting of same crop family, tracks soil health index changes.
+    Admin --> UC8
+    Admin --> UC9
+    Admin --> UC10
 
-**Subsidy Evaluator**: Determines government subsidy eligibility using configuration-based rules, computes estimated subsidy amounts.
-
-## Components and Interfaces
-
-### 1. Farm Profile Manager
-
-**Purpose**: Manages farm profile data including location, acreage, soil type, equipment, and crop history.
-
-**Interface**:
-```python
-class FarmProfile:
-    farm_id: str
-    location: GeoLocation
-    total_acreage: float
-    soil_type: SoilType
-    equipment: List[Equipment]
-    crop_history: List[CropRecord]
-    
-class FarmProfileManager:
-    def create_profile(profile: FarmProfile) -> str
-    def update_profile(farm_id: str, updates: Dict) -> FarmProfile
-    def get_profile(farm_id: str) -> FarmProfile
-    def validate_profile(profile: FarmProfile) -> ValidationResult
+    UC1 --> EX1
+    UC2 --> EX1
+    UC4 --> EX1
+    UC1 --> EX2
+    UC2 --> EX2
+    UC1 --> EX3
 ```
 
-**Validation Rules**:
-- Total acreage: 1-10,000 acres
-- Location: Valid lat/lon coordinates
-- Soil type: Enum from predefined list
-- Equipment: Non-empty list with valid equipment types
-- Crop history: At least 1 year of data preferred
+**Actor descriptions:**
 
-**Addresses Requirements**: 1.1, 1.2, 1.3, 1.4, 1.5
+| Actor      | Role                                                                 |
+| ---------- | -------------------------------------------------------------------- |
+| **Farmer** | Primary user — enters farm details, receives recommendations, chats  |
+| **Admin**  | Maintains system — retrains models, updates subsidy data, monitors health |
 
----
+### Process Flow: Crop Recommendation
 
-### 2. Weather Data Integration Module
+The core flow from farm profile input to ranked crop recommendations with explanations.
 
-**Purpose**: Retrieves and caches weather forecast and historical climate data for farm locations.
+```mermaid
+flowchart TD
+    A([Farmer enters farm profile]) --> B[Validate input fields]
+    B --> C{All required fields present?}
+    C -->|No| D[Return validation error with missing fields]
+    C -->|Yes| E[Feature Pipeline: load market, weather, soil, subsidy data]
+    E --> F[Build feature vector for each candidate crop]
+    F --> G[Lookup rotation compatibility with previous crop]
+    G --> H{ML model available?}
+    H -->|Yes| I[XGBoost scores all candidate crops]
+    H -->|No| J[Fallback: rule-based scoring using statistical baseline]
+    I --> K[Subsidy Lookup: match MSP & schemes per crop]
+    J --> K
+    K --> L[Compute total projected income per crop]
+    L --> M[Rank top 5 crops by composite profitability score]
+    M --> N{LLM API available?}
+    N -->|Yes| O[LLM generates natural language reasoning per crop]
+    N -->|No| P[Template-based explanation per crop]
+    O --> Q[Assemble final response with recommendations + explanations]
+    P --> Q
+    Q --> R([Return ranked recommendations to farmer])
 
-**Interface**:
-```python
-class WeatherData:
-    location: GeoLocation
-    forecast: List[DailyForecast]  # 14-day forecast
-    historical: List[YearlyClimate]  # 3+ years
-    rainfall_variance: float
-    
-class WeatherIntegration:
-    def fetch_weather_data(location: GeoLocation) -> WeatherData
-    def get_rainfall_variance(location: GeoLocation, years: int) -> float
-    def detect_climate_anomalies(location: GeoLocation) -> List[Anomaly]
+    style A fill:#e1f5fe
+    style R fill:#e8f5e9
+    style D fill:#ffebee
+    style J fill:#fff3e0
+    style P fill:#fff3e0
 ```
 
-**Data Sources**:
-- Primary: OpenWeatherMap API (free tier: 1000 calls/day)
-- Fallback: Regional averages from NOAA historical data
-- Cache TTL: 24 hours for forecasts, 30 days for historical data
+### Process Flow: Yield Prediction
 
-**Addresses Requirements**: 2.1, 2.2, 2.3, 2.4, 2.5
+Predicting crop yield for a specific crop on the farmer's land.
 
----
+```mermaid
+flowchart TD
+    A([Farmer selects crop + enters farm details]) --> B[Validate crop type and features]
+    B --> C{Crop type supported?}
+    C -->|No| D[Return error: unsupported crop type]
+    C -->|Yes| E[Feature Pipeline: build yield feature vector]
+    E --> F[Impute missing values using regional defaults]
+    F --> G[Encode categorical features using stored encoders]
+    G --> H{Yield model loaded for this crop?}
+    H -->|Yes| I[XGBoost predicts yield + confidence interval]
+    H -->|No| J[Fallback: statistical baseline prediction]
+    I --> K[Extract feature importance scores]
+    J --> K
+    K --> L{LLM API available?}
+    L -->|Yes| M[LLM generates yield explanation]
+    L -->|No| N[Template-based yield explanation]
+    M --> O[Return prediction + confidence interval + explanation]
+    N --> O
+    O --> P([Display yield prediction to farmer])
 
-### 3. Market Price Data Integration Module
-
-**Purpose**: Retrieves and caches commodity price data and forecasts.
-
-**Interface**:
-```python
-class PriceData:
-    crop: CropType
-    current_price: float
-    historical_prices: List[PricePoint]  # 3+ years
-    forecast_price: float  # Harvest season estimate
-    price_volatility: float
-    
-class PriceIntegration:
-    def fetch_price_data(crop: CropType) -> PriceData
-    def forecast_harvest_price(crop: CropType, harvest_date: Date) -> float
-    def compute_price_volatility(crop: CropType, years: int) -> float
+    style A fill:#e1f5fe
+    style P fill:#e8f5e9
+    style D fill:#ffebee
+    style J fill:#fff3e0
+    style N fill:#fff3e0
 ```
 
-**Forecasting Method**:
-- Simple moving average (3-month window) for MVP
-- Future: ARIMA or ML-based forecasting
+### Process Flow: Conversational Query
 
-**Data Sources**:
-- Primary: USDA NASS API (free, updated weekly)
-- Fallback: Conservative estimates from historical averages
-- Cache TTL: 7 days
+How the chat interface routes natural language questions to backend services.
 
-**Addresses Requirements**: 3.1, 3.2, 3.3, 3.4, 3.5
+```mermaid
+flowchart TD
+    A([Farmer types a question]) --> B[LangChain agent receives message + session context]
+    B --> C[LLM classifies intent]
+    C --> D{Identified intent?}
+    D -->|Crop recommendation| E[Extract: location, soil, previous crop, season]
+    D -->|Yield prediction| F[Extract: crop type, farm conditions]
+    D -->|Subsidy inquiry| G[Extract: crop type, state]
+    D -->|Rotation advice| H[Extract: previous crop, candidate crop]
+    D -->|Ambiguous / unclear| I[Ask clarifying question to farmer]
 
----
+    E --> J{All required params extracted?}
+    J -->|No| I
+    J -->|Yes| K[Call Crop Recommender tool]
 
-### 4. Yield Estimator
+    F --> L{All required params extracted?}
+    L -->|No| I
+    L -->|Yes| M[Call Yield Predictor tool]
 
-**Purpose**: Predicts expected crop yield per acre with confidence intervals.
+    G --> N[Call Subsidy Lookup tool]
+    H --> O[Call Rotation Matrix lookup]
 
-**Interface**:
-```python
-class YieldEstimate:
-    crop: CropType
-    expected_yield: float  # bushels/acre or tons/acre
-    confidence_interval: Tuple[float, float]  # (lower, upper)
-    variance: float
-    
-class YieldEstimator:
-    def estimate_yield(
-        crop: CropType,
-        soil: SoilType,
-        weather: WeatherData,
-        history: List[CropRecord]
-    ) -> YieldEstimate
+    K --> P[Format recommendation into conversational reply]
+    M --> P
+    N --> P
+    O --> P
+    I --> P
+
+    P --> Q[Generate follow-up suggestions]
+    Q --> R[Save updated session context]
+    R --> S([Return reply + suggestions to farmer])
+
+    style A fill:#e1f5fe
+    style S fill:#e8f5e9
+    style I fill:#fff9c4
 ```
 
-**Estimation Logic**:
-1. Start with baseline yield for crop + soil combination (from crop knowledge base)
-2. Adjust for rainfall deviation from optimal range (-20% to +10%)
-3. Adjust for temperature deviation from optimal range (-15% to +5%)
-4. Adjust using farm's historical yield if available (+/- 10%)
-5. Compute variance from historical weather variability
+### Process Flow: Model Training Pipeline
 
-**Addresses Requirements**: 5.1, 5.2, 5.3, 5.4, 5.5
+Offline process for training and validating ML models.
 
----
+```mermaid
+flowchart TD
+    A([Training triggered]) --> B[Load raw data CSVs]
+    B --> C[Validate data quality]
+    C --> D{Passes validation?}
+    D -->|No| E[Log data quality errors & abort]
+    D -->|Yes| F[Feature engineering: join, transform, encode]
+    F --> G[Time-based train/validation/test split]
+    G --> H[Train XGBoost model with early stopping]
+    H --> I[Evaluate on validation set]
+    I --> J{Metrics meet thresholds?}
+    J -->|No| K{Iteration count < 3?}
+    K -->|Yes| L[Adjust hyperparameters / review features]
+    L --> H
+    K -->|No| M[Log warning: deploy with limitations noted]
+    J -->|Yes| N[Evaluate on held-out test set]
+    N --> O[Save model via joblib]
+    O --> P[Save feature encoders]
+    P --> Q[Write model metadata JSON]
+    M --> O
+    Q --> R([Model ready for inference])
 
-### 5. Profit Calculator
-
-**Purpose**: Computes net profit per acre incorporating all costs and revenues.
-
-**Interface**:
-```python
-class ProfitProjection:
-    crop: CropType
-    revenue: float
-    costs: CostBreakdown
-    subsidies: float
-    net_profit: float
-    sensitivity_range: Tuple[float, float]
-    
-class CostBreakdown:
-    seed_cost: float
-    fertilizer_cost: float
-    labor_cost: float
-    equipment_cost: float
-    
-class ProfitCalculator:
-    def calculate_profit(
-        crop: CropType,
-        yield_estimate: YieldEstimate,
-        price_data: PriceData,
-        subsidies: float
-    ) -> ProfitProjection
+    style A fill:#e1f5fe
+    style R fill:#e8f5e9
+    style E fill:#ffebee
+    style M fill:#fff3e0
 ```
 
-**Cost Estimation**:
-- Seed cost: Crop-specific rate from knowledge base
-- Fertilizer cost: Soil-dependent, from user input or defaults
-- Labor cost: Crop-specific hours × regional wage rate
-- Equipment cost: Depreciation + fuel for crop-specific operations
+### End-to-End System Flow
 
-**Addresses Requirements**: 6.1, 6.2, 6.3, 6.4, 6.5
+Complete flow showing how all components interact for a typical farmer session.
 
----
+```mermaid
+sequenceDiagram
+    actor Farmer
+    participant UI as React Dashboard
+    participant API as FastAPI
+    participant FP as Feature Pipeline
+    participant CR as Crop Recommender
+    participant YP as Yield Predictor
+    participant SL as Subsidy Lookup
+    participant LE as LLM Explainer
+    participant LLM as LLM API
 
-### 6. Subsidy Evaluator
+    Farmer->>UI: Enter farm profile (location, soil, previous crop)
+    UI->>API: POST /api/v1/recommend/crops
+    API->>FP: Build features for all candidate crops
+    FP->>FP: Load market prices, weather, soil data
+    FP-->>API: Feature matrix (1 row per crop)
+    API->>SL: Get schemes for each candidate crop + state
+    SL-->>API: Applicable MSP & subsidy schemes
+    API->>CR: Score candidates (features + subsidies + rotation)
+    CR-->>API: Top 5 ranked crops with scores
+    API->>LE: Generate explanations for top 5
+    LE->>LLM: Send prompt with crop data + farm context
+    LLM-->>LE: Natural language explanations
+    LE-->>API: Explanations per crop
+    API-->>UI: Ranked recommendations + explanations + schemes
+    UI-->>Farmer: Display recommendation cards & charts
 
-**Purpose**: Determines government subsidy eligibility and computes estimated amounts.
+    Note over Farmer,UI: Farmer wants more detail on #1 crop
 
-**Interface**:
-```python
-class SubsidyRule:
-    program_name: str
-    eligible_crops: List[CropType]
-    min_acreage: float
-    amount_per_acre: float
-    conditions: Dict[str, Any]
-    
-class SubsidyEvaluation:
-    eligible_programs: List[str]
-    total_subsidy: float
-    uncertain_programs: List[str]
-    
-class SubsidyEvaluator:
-    def evaluate_subsidies(
-        crop: CropType,
-        acreage: float,
-        farm_profile: FarmProfile
-    ) -> SubsidyEvaluation
-    
-    def load_subsidy_rules(config_file: str) -> List[SubsidyRule]
+    Farmer->>UI: "What yield can I expect from wheat?"
+    UI->>API: POST /api/v1/chat
+    API->>YP: Predict yield for wheat + farm features
+    YP-->>API: 4.2 tons/ha (CI: 3.5-4.9)
+    API->>LE: Explain yield prediction
+    LE->>LLM: Prompt with yield + feature importance
+    LLM-->>LE: Farmer-friendly explanation
+    LE-->>API: Explanation text
+    API-->>UI: Chat reply + follow-up suggestions
+    UI-->>Farmer: Display answer in chat panel
 ```
 
-**Configuration-Based Rules**:
-- Rules stored in JSON/YAML configuration files
-- MVP includes 3-5 common US federal programs (e.g., ARC, PLC)
-- Extensible to state-level programs
+## Decision Factors & How They're Used
 
-**Addresses Requirements**: 7.1, 7.2, 7.3, 7.4, 7.5
+| Factor                                             | Source                                      | Used By                           | How                                                                |
+| -------------------------------------------------- | ------------------------------------------- | --------------------------------- | ------------------------------------------------------------------ |
+| **Land conditions** (soil type, pH, quality)       | Farm profile input                          | Crop Recommender, Yield Predictor | Feature input — crops scored on soil suitability                   |
+| **Previous crop**                                  | Farm profile input                          | Crop Recommender                  | Rotation matrix — penalizes bad sequences, boosts beneficial ones  |
+| **Market prices**                                  | Government open data / CSV                  | Crop Recommender                  | Revenue estimation — current mandi rates per crop                  |
+| **Government subsidies**                           | Curated dataset (MSP, PMFBY, state schemes) | Crop Recommender, Subsidy Lookup  | Revenue boost — MSP-backed crops get score uplift                  |
+| **Weather**                                        | Historical data + seasonal forecast         | Yield Predictor, Crop Recommender | Risk factor — drought/flood risk affects yield and suitability     |
+| **Locality** (state, district, agro-climatic zone) | Farm profile input                          | All models                        | Region-specific crop suitability, local yields, applicable schemes |
+| **Demand**                                         | Regional demand indicators / CSV            | Crop Recommender                  | Market opportunity — high-demand crops scored higher               |
 
----
+## Data Schemas
 
-### 7. Rotation Planner
+### Farm Profile (Input)
 
-**Purpose**: Evaluates crop rotation compatibility and generates rotation recommendations.
+| Field                | Type    | Required | Description                                         | Example       |
+| -------------------- | ------- | -------- | --------------------------------------------------- | ------------- |
+| state                | string  | Yes      | Indian state                                        | "Maharashtra" |
+| district             | string  | Yes      | District within state                               | "Pune"        |
+| acreage              | float   | Yes      | Available land in hectares                          | 5.0           |
+| soil_type            | string  | Yes      | Soil classification                                 | "black"       |
+| soil_ph              | float   | No       | Soil pH level (4.0–9.0)                             | 7.2           |
+| soil_quality_score   | float   | No       | Composite soil quality (0–1)                        | 0.78          |
+| previous_crop        | string  | Yes      | Last crop grown on this land                        | "rice"        |
+| irrigation_available | boolean | Yes      | Whether irrigation infrastructure exists            | true          |
+| season               | string  | Yes      | Target planting season: "kharif", "rabi", or "zaid" | "rabi"        |
 
-**Interface**:
-```python
-class RotationCompatibility:
-    crop: CropType
-    compatible: bool
-    soil_health_impact: float  # -1.0 to +1.0
-    reason: str
-    
-class RotationSequence:
-    current_season: CropType
-    next_season: Optional[CropType]
-    soil_health_index: float
-    
-class RotationPlanner:
-    def evaluate_compatibility(
-        crop: CropType,
-        crop_history: List[CropRecord]
-    ) -> RotationCompatibility
-    
-    def generate_rotation_sequence(
-        current_crop: CropType,
-        farm_profile: FarmProfile
-    ) -> List[CropType]
-    
-    def compute_soil_health_index(
-        rotation_sequence: List[CropType]
-    ) -> float
+**Valid soil types**: alluvial, black, red, laterite, desert, mountain, peaty
+
+### Crop Recommendation (Output)
+
+| Field                  | Type        | Description                                     |
+| ---------------------- | ----------- | ----------------------------------------------- |
+| rank                   | integer     | Position in ranked list (1 = best)              |
+| crop_type              | string      | Recommended crop name                           |
+| profitability_score    | float (0–1) | Composite score combining all decision factors  |
+| estimated_yield        | float       | Predicted yield in tons/hectare                 |
+| estimated_revenue      | float       | Market revenue in INR (price × yield × acreage) |
+| subsidy_benefit        | float       | Estimated subsidy/MSP benefit in INR            |
+| total_projected_income | float       | estimated_revenue + subsidy_benefit             |
+| risk_level             | string      | "low", "medium", or "high"                      |
+| rotation_fit           | string      | "good", "neutral", or "poor" (vs previous crop) |
+| confidence             | float (0–1) | Model confidence in this recommendation         |
+| feature_importance     | dict        | Top factors and their relative weights          |
+| reasoning              | string      | LLM-generated farmer-friendly explanation       |
+| applicable_schemes     | list        | Matched government subsidy schemes              |
+
+### Yield Prediction (Output)
+
+| Field               | Type           | Description                               |
+| ------------------- | -------------- | ----------------------------------------- |
+| crop_type           | string         | Crop for which yield is predicted         |
+| estimated_yield     | float          | Predicted yield in tons/hectare           |
+| confidence_interval | [float, float] | Lower and upper bound (95% interval)      |
+| confidence_score    | float (0–1)    | Model confidence                          |
+| feature_importance  | dict           | Feature name → relative importance weight |
+| explanation         | string         | LLM-generated farmer-friendly explanation |
+| method              | string         | "ml" or "statistical_baseline"            |
+
+### Subsidy Scheme
+
+| Field             | Type   | Description                                              |
+| ----------------- | ------ | -------------------------------------------------------- |
+| scheme_name       | string | Official scheme name (e.g., "MSP Rabi 2025-26", "PMFBY") |
+| scheme_type       | string | "msp", "insurance", "input_subsidy", or "incentive"      |
+| crop_type         | string | Applicable crop                                          |
+| applicable_states | list   | States where scheme applies (empty = all India)          |
+| benefit_amount    | float  | Monetary benefit (INR)                                   |
+| benefit_type      | string | "per_quintal", "per_hectare", or "percentage"            |
+| eligibility_notes | string | Eligibility criteria description                         |
+| source_url        | string | Government notification or reference URL                 |
+
+### Chat Response
+
+| Field                 | Type   | Description                                     |
+| --------------------- | ------ | ----------------------------------------------- |
+| reply                 | string | Natural language response to the farmer         |
+| follow_up_suggestions | list   | 2-3 suggested follow-up questions               |
+| tools_used            | list   | Backend tools invoked (e.g., "recommend_crops") |
+| session_id            | string | Session identifier for conversation continuity  |
+
+### Crop Rotation Matrix
+
+Pre-computed compatibility scores between crop sequences. Values range from -0.5 (very poor rotation) to +0.5 (very beneficial rotation).
+
+| Previous → Next | Rice | Wheat | Cotton | Soybean | Sugarcane |
+| --------------- | ---- | ----- | ------ | ------- | --------- |
+| **Rice**        | -0.3 | +0.4  | +0.2   | +0.5    | -0.1      |
+| **Wheat**       | +0.3 | -0.3  | +0.3   | +0.2    | +0.1      |
+| **Cotton**      | +0.2 | +0.3  | -0.4   | +0.3    | +0.1      |
+| **Soybean**     | +0.4 | +0.5  | +0.2   | -0.2    | +0.1      |
+| **Sugarcane**   | +0.1 | +0.1  | +0.2   | +0.2    | -0.5      |
+
+**Rules**: Same crop back-to-back is always penalized. Legumes (soybean) before cereals (wheat) is always boosted due to nitrogen fixation.
+
+## Dataset Schemas
+
+### crop_yields_india.csv
+
+Historical crop yield data aggregated by state, district, and year.
+
+| Column            | Type    | Description               | Example       |
+| ----------------- | ------- | ------------------------- | ------------- |
+| state             | string  | State name                | "Maharashtra" |
+| district          | string  | District name             | "Pune"        |
+| crop_type         | string  | Crop name                 | "wheat"       |
+| year              | integer | Crop year                 | 2024          |
+| season            | string  | kharif / rabi / zaid      | "rabi"        |
+| area_hectares     | float   | Area under cultivation    | 15000.0       |
+| yield_tons_per_ha | float   | Yield in tons per hectare | 3.8           |
+| production_tons   | float   | Total production in tons  | 57000.0       |
+
+**Source**: data.gov.in / Ministry of Agriculture open datasets
+
+### market_prices.csv
+
+Current and historical mandi (market) prices for agricultural commodities.
+
+| Column          | Type   | Description                   | Example       |
+| --------------- | ------ | ----------------------------- | ------------- |
+| crop_type       | string | Commodity name                | "wheat"       |
+| state           | string | State                         | "Maharashtra" |
+| market_name     | string | Mandi name                    | "Pune"        |
+| date            | date   | Price date                    | "2026-02-01"  |
+| min_price_inr   | float  | Minimum price (INR/quintal)   | 2100.0        |
+| max_price_inr   | float  | Maximum price (INR/quintal)   | 2450.0        |
+| modal_price_inr | float  | Most common transaction price | 2300.0        |
+
+**Source**: agmarknet.gov.in / eNAM portal
+
+### subsidies.csv
+
+Government agricultural schemes, MSP rates, and incentive programs.
+
+| Column            | Type   | Description                                 | Example                               |
+| ----------------- | ------ | ------------------------------------------- | ------------------------------------- |
+| scheme_name       | string | Official scheme name                        | "MSP Rabi 2025-26"                    |
+| scheme_type       | string | msp / insurance / input_subsidy / incentive | "msp"                                 |
+| crop_type         | string | Applicable crop                             | "wheat"                               |
+| applicable_states | string | Comma-separated states or "ALL"             | "ALL"                                 |
+| benefit_amount    | float  | Monetary benefit                            | 2275.0                                |
+| benefit_type      | string | per_quintal / per_hectare / percentage      | "per_quintal"                         |
+| valid_from        | date   | Scheme start date                           | "2025-10-01"                          |
+| valid_to          | date   | Scheme end date                             | "2026-03-31"                          |
+| eligibility_notes | string | Who qualifies                               | "All farmers via procurement centers" |
+
+### weather_historical.csv
+
+Historical weather data by district for model training.
+
+| Column       | Type    | Description                   | Example       |
+| ------------ | ------- | ----------------------------- | ------------- |
+| state        | string  | State name                    | "Maharashtra" |
+| district     | string  | District name                 | "Pune"        |
+| year         | integer | Year                          | 2024          |
+| month        | integer | Month (1-12)                  | 6             |
+| avg_temp_c   | float   | Average temperature (°C)      | 28.5          |
+| min_temp_c   | float   | Minimum temperature (°C)      | 22.0          |
+| max_temp_c   | float   | Maximum temperature (°C)      | 35.0          |
+| rainfall_mm  | float   | Total rainfall (mm)           | 185.0         |
+| humidity_pct | float   | Average relative humidity (%) | 72.0          |
+
+**Source**: IMD (India Meteorological Department) / OpenWeatherMap historical
+
+### soil_data.csv
+
+Soil characteristics by region (district-level).
+
+| Column               | Type   | Description                       | Example                     |
+| -------------------- | ------ | --------------------------------- | --------------------------- |
+| state                | string | State name                        | "Maharashtra"               |
+| district             | string | District name                     | "Pune"                      |
+| predominant_soil     | string | Primary soil type                 | "black"                     |
+| avg_ph               | float  | Average soil pH                   | 7.2                         |
+| organic_carbon_pct   | float  | Organic carbon (%)                | 0.65                        |
+| nitrogen_kg_per_ha   | float  | Available nitrogen                | 210.0                       |
+| phosphorus_kg_per_ha | float  | Available phosphorus              | 18.5                        |
+| potassium_kg_per_ha  | float  | Available potassium               | 320.0                       |
+| agro_climatic_zone   | string | Agro-climatic zone classification | "Western Plateau and Hills" |
+
+## Components
+
+### 1. Crop Recommender
+
+**Purpose**: Rank crops by a composite score combining yield potential, market revenue, subsidy benefits, rotation suitability, and risk.
+
+**Technology**: XGBoost (primary), Scikit-learn (fallback)
+
+**Why ML here**: The interactions between factors are non-linear (e.g., a crop might be profitable only if subsidized AND in the right climate zone). Gradient boosting captures these interactions better than hand-written rules.
+
+**Inputs**: FarmProfile + market data + subsidy data + weather data
+**Outputs**: Ranked list of CropRecommendation objects
+
+**Feature vector for crop scoring:**
+
+| Feature                | Type        | Description                                                   |
+| ---------------------- | ----------- | ------------------------------------------------------------- |
+| soil_type_encoded      | categorical | One-hot encoded soil type                                     |
+| soil_ph                | float       | Soil pH level                                                 |
+| soil_quality_score     | float       | Composite soil quality (0-1)                                  |
+| acreage                | float       | Available land in hectares                                    |
+| previous_crop_encoded  | categorical | Last crop grown (for rotation)                                |
+| rotation_compatibility | float       | Pre-computed rotation score for this crop after previous crop |
+| market_price_current   | float       | Current mandi rate (INR/quintal)                              |
+| market_price_trend     | float       | 30-day price trend (+/-)                                      |
+| msp_available          | binary      | Whether MSP is declared for this crop                         |
+| msp_rate               | float       | MSP rate if available, else 0                                 |
+| subsidy_score          | float       | Composite subsidy benefit score (0-1)                         |
+| avg_temperature        | float       | Seasonal avg temperature for locality                         |
+| expected_rainfall      | float       | Seasonal expected rainfall (mm)                               |
+| agro_climatic_zone     | categorical | Encoded zone classification                                   |
+| state_encoded          | categorical | State identifier                                              |
+| demand_index           | float       | Regional demand indicator (0-1)                               |
+| historical_yield_avg   | float       | Regional avg yield for this crop                              |
+
+**Evaluation metrics**: NDCG@5, Precision@5, MAP
+
+### 2. Yield Predictor
+
+**Purpose**: Predict per-crop yield for a specific farm profile and conditions.
+
+**Technology**: XGBoost (one model per crop type)
+
+**Why ML here**: Yield depends on complex interactions between soil, weather, and farming practices that statistical averages miss.
+
+**Inputs**: crop_type + farm/environmental features
+**Outputs**: YieldPrediction with confidence interval
+
+**Feature vector for yield prediction:**
+
+| Feature              | Type        | Description                           |
+| -------------------- | ----------- | ------------------------------------- |
+| soil_quality_score   | float       | Composite soil quality (0-1)          |
+| soil_ph              | float       | Soil pH level                         |
+| avg_temperature      | float       | Seasonal avg temperature (°C)         |
+| total_precipitation  | float       | Seasonal total rainfall (mm)          |
+| humidity             | float       | Average humidity (%)                  |
+| planting_month       | integer     | Month of planting (1-12)              |
+| historical_yield_avg | float       | 3-year avg yield for this region/crop |
+| fertilizer_amount    | float       | Fertilizer applied (kg/hectare)       |
+| irrigation_available | binary      | Whether irrigation is available       |
+| agro_climatic_zone   | categorical | Encoded agro-climatic zone            |
+
+**Evaluation metrics**: RMSE, MAE, R² score
+
+### 3. Subsidy Lookup
+
+**Purpose**: Match applicable government schemes to a crop/region combination.
+
+**Technology**: Simple data service (pandas filtering on curated CSV)
+
+**Why not ML**: Subsidy rules are deterministic — a crop either has MSP or it doesn't. No prediction needed.
+
+**Inputs**: crop_type + state
+**Outputs**: List of SubsidyScheme objects + estimated total benefit in INR
+
+### 4. LLM Explainer
+
+**Purpose**: Turn ML outputs + subsidy data into farmer-friendly explanations.
+
+**Technology**: Anthropic Claude API
+
+**Why LLM here**: Generating natural, contextual explanations that weave together yield data, market conditions, subsidy info, and rotation advice requires language understanding that templates alone can't match.
+
+**Inputs**: Prediction/recommendation data + farm profile context
+**Outputs**: Natural language explanation string (100-150 words)
+**Fallback**: Template-based explanation when Claude API is unavailable
+
+**Prompt template** (stored in `prompts/crop_recommendation.txt`):
+
+```
+You are an agricultural advisor helping an Indian farmer decide what to grow next season.
+Speak simply and clearly. Avoid technical jargon. Use INR for money.
+
+Farm Details:
+- Location: {state}, {district}
+- Land: {acreage} hectares, {soil_type} soil (pH {soil_ph})
+- Previous crop: {previous_crop}
+- Season: {season}
+
+Recommended Crop: {crop_type}
+- Expected yield: {yield} tons/hectare
+- Market price: ₹{market_price}/quintal
+- Estimated revenue: ₹{revenue}
+- Government support: {subsidy_details}
+- Rotation fit: {rotation_fit} after {previous_crop}
+
+Top factors driving this recommendation:
+{feature_importance}
+
+Explain in 100-150 words:
+1. Why this crop is a good choice for this farmer's specific situation
+2. How government subsidies/MSP benefit them
+3. One practical tip for getting the best yield
 ```
 
-**Rotation Rules**:
-- Prevent same crop family in consecutive seasons
-- Legumes improve soil health (+0.2 index)
-- Repetitive heavy feeders degrade soil health (-0.3 index)
-- Soil health index: 0.0 (depleted) to 1.0 (optimal)
+### 5. Conversational Interface
 
-**Addresses Requirements**: 8.1, 8.2, 8.3, 8.4, 8.5
+**Purpose**: Let farmers ask questions naturally instead of filling forms.
 
----
+**Technology**: LangChain with Claude backend
 
-### 8. Harvest Conflict Detector
+**Inputs**: Natural language message + session_id
+**Outputs**: ChatResponse with reply, follow-up suggestions, and tools used
 
-**Purpose**: Detects and resolves harvest timing conflicts among crop combinations.
+**Registered tools:**
 
-**Interface**:
-```python
-class HarvestWindow:
-    crop: CropType
-    start_date: Date
-    end_date: Date
-    equipment_required: List[Equipment]
-    labor_hours: float
-    
-class HarvestConflict:
-    conflicting_crops: List[CropType]
-    overlap_period: Tuple[Date, Date]
-    resolvable: bool
-    resolution_strategy: Optional[str]
-    
-class HarvestConflictDetector:
-    def detect_conflicts(
-        crop_combination: List[CropType],
-        equipment: List[Equipment]
-    ) -> List[HarvestConflict]
-    
-    def generate_harvest_timeline(
-        crops: List[CropType]
-    ) -> List[HarvestWindow]
+| Tool Name          | Maps To                           | Example Query                            |
+| ------------------ | --------------------------------- | ---------------------------------------- |
+| `recommend_crops`  | CropRecommender.recommend         | "What should I grow next season?"        |
+| `predict_yield`    | YieldPredictor.predict            | "How much wheat can I grow per hectare?" |
+| `lookup_subsidies` | SubsidyLookup.get_schemes         | "Which crops have MSP this year?"        |
+| `check_rotation`   | CropRecommender (rotation matrix) | "Is it good to grow wheat after rice?"   |
+
+**Session context**: In-memory dict keyed by session_id. Stores extracted farm profile so farmers don't have to repeat information across turns.
+
+### 6. Feature Pipeline
+
+**Purpose**: Combine data from all sources into model-ready features.
+
+**Inputs**: FarmProfile + candidate crop list
+**Outputs**: Feature DataFrame (one row per candidate crop for recommendation, one row for yield prediction)
+
+**Responsibilities:**
+
+- Load and join data from CSVs (yields, prices, weather, soil, subsidies)
+- Handle missing values using regional defaults or mean imputation
+- Encode categorical features (soil type, state, crop type) consistently between training and inference
+- Compute derived features (rotation_compatibility from matrix, subsidy_score from schemes, market_price_trend from price history)
+- Validate feature schema before passing to models
+
+### 7. Statistical Baseline (existing — fallback)
+
+Existing SciPy optimization and NumPy Monte Carlo methods serve as the fallback layer. The new ML components wrap these — if the ML model fails to load or predict, the system automatically delegates to the baseline and marks the response with `method: "statistical_baseline"`.
+
+## Model Training Process
+
+### Training Pipeline Overview
+
+```mermaid
+flowchart LR
+    A[Raw Data CSVs] --> B[Data Validation]
+    B --> C[Feature Engineering]
+    C --> D[Train/Test Split]
+    D --> E[Model Training]
+    E --> F[Evaluation]
+    F --> G{Meets Threshold?}
+    G -->|Yes| H[Save Model - joblib]
+    G -->|No| I[Log Failure & Iterate]
+    I --> E
 ```
 
-**Conflict Resolution**:
-- Check if equipment capacity can handle overlapping harvests
-- Consider labor availability (assume 10 hours/day per worker)
-- If unresolvable, adjust crop recommendations to avoid conflict
+### Step 1: Data Collection & Validation
 
-**Addresses Requirements**: 9.1, 9.2, 9.3, 9.4, 9.5
+**Data sources:**
 
----
+- `crop_yields_india.csv` — Historical yields from data.gov.in (minimum 5 years, 10+ states)
+- `market_prices.csv` — Mandi prices from agmarknet.gov.in
+- `weather_historical.csv` — IMD weather records
+- `soil_data.csv` — Soil survey data by district
+- `subsidies.csv` — Curated from government notifications
 
-### 9. Risk Analyzer
+**Validation checks before training:**
 
-**Purpose**: Computes risk scores based on rainfall variability and price volatility.
+- No more than 20% missing values in any critical column
+- Yield values within physically plausible ranges (0–30 tons/hectare depending on crop)
+- Price values > 0
+- All required columns present in each CSV
+- No duplicate rows (same state + district + crop + year)
+- At least 500 rows per crop type for yield model training
 
-**Interface**:
-```python
-class RiskScore:
-    crop: CropType
-    total_risk: float  # 0-100 scale
-    rainfall_risk: float
-    price_risk: float
-    mitigation_recommendations: List[str]
-    
-class RiskAnalyzer:
-    def compute_risk_score(
-        crop: CropType,
-        weather_data: WeatherData,
-        price_data: PriceData
-    ) -> RiskScore
-    
-    def generate_mitigation_recommendations(
-        risk_score: RiskScore
-    ) -> List[str]
+### Step 2: Feature Engineering
+
+**For Yield Predictor (per crop):**
+
+1. Join yield data with weather data on (state, district, year)
+2. Join with soil data on (state, district)
+3. Compute seasonal weather aggregates (avg temp, total rainfall for growing season)
+4. Impute missing soil_ph and soil_quality with district-level or state-level averages
+5. Encode agro_climatic_zone using label encoding (consistent mapping stored as JSON)
+6. Final feature matrix: one row per (state, district, year) observation
+
+**For Crop Recommender:**
+
+1. Start with yield data joined with market prices for the same crop and year
+2. Compute profitability label: `yield × modal_price_inr` as target variable
+3. Join with soil, weather, and subsidy data
+4. Add rotation_compatibility score from rotation matrix (previous crop → current crop)
+5. Compute demand_index from production trends (3-year change in district area under crop)
+6. Encode categorical features (soil_type, state, crop_type) — store encoders for inference reuse
+7. Final feature matrix: one row per (state, district, crop, year) combination
+
+### Step 3: Train/Test Split
+
+| Split      | Percentage | Strategy                                                |
+| ---------- | ---------- | ------------------------------------------------------- |
+| Training   | 70%        | Earlier years (e.g., 2018–2022)                         |
+| Validation | 15%        | Next year (e.g., 2023) — used for hyperparameter tuning |
+| Test       | 15%        | Most recent year (e.g., 2024) — held out for final eval |
+
+**Important**: Split by time (year), not randomly, to prevent data leakage. A model trained on 2023 data should not be validated on 2022 data.
+
+### Step 4: Model Training
+
+**Yield Predictor** (one model per crop):
+
+| Parameter        | Value                        | Notes                                     |
+| ---------------- | ---------------------------- | ----------------------------------------- |
+| Algorithm        | XGBRegressor                 | Gradient boosting for regression          |
+| n_estimators     | 200                          | Number of boosting rounds                 |
+| max_depth        | 6                            | Tree depth (prevent overfitting)          |
+| learning_rate    | 0.1                          | Step size shrinkage                       |
+| subsample        | 0.8                          | Row sampling per tree                     |
+| colsample_bytree | 0.8                          | Feature sampling per tree                 |
+| early_stopping   | 20 rounds                    | Stop if validation metric doesn't improve |
+| cross-validation | 5-fold (within training set) | For hyperparameter selection              |
+
+**Crop Recommender** (single model, all crops):
+
+| Parameter        | Value        | Notes                                         |
+| ---------------- | ------------ | --------------------------------------------- |
+| Algorithm        | XGBRegressor | Predicts profitability score                  |
+| n_estimators     | 300          | More trees for multi-crop complexity          |
+| max_depth        | 8            | Slightly deeper for more feature interactions |
+| learning_rate    | 0.05         | Slower learning for better generalization     |
+| subsample        | 0.8          | Row sampling                                  |
+| colsample_bytree | 0.7          | Feature sampling                              |
+| early_stopping   | 30 rounds    | Patience for convergence                      |
+| cross-validation | 5-fold       | For hyperparameter selection                  |
+
+### Step 5: Evaluation
+
+**Yield Predictor — Minimum thresholds to pass:**
+
+| Metric | Threshold | Description                            |
+| ------ | --------- | -------------------------------------- |
+| RMSE   | < 1.5     | Root mean squared error (tons/hectare) |
+| MAE    | < 1.0     | Mean absolute error (tons/hectare)     |
+| R²     | > 0.60    | Variance explained (higher is better)  |
+
+**Crop Recommender — Minimum thresholds to pass:**
+
+| Metric      | Threshold | Description                                   |
+| ----------- | --------- | --------------------------------------------- |
+| NDCG@5      | > 0.70    | Ranking quality of top 5 recommendations      |
+| Precision@5 | > 0.60    | Proportion of top 5 that are truly profitable |
+| Spearman ρ  | > 0.50    | Rank correlation with actual profitability    |
+
+**If thresholds are not met:**
+
+1. Review feature importance — check if key features (soil, weather, price) are contributing
+2. Check for data quality issues (leakage, missing values, class imbalance)
+3. Adjust hyperparameters (reduce max_depth if overfitting, increase n_estimators if underfitting)
+4. Consider adding/removing features
+5. If still failing after 3 iterations, deploy with a note about model limitations and rely more on fallback
+
+### Step 6: Model Serialization & Storage
+
+- Trained models saved using `joblib.dump()` to `models/` directory
+- **Naming convention**: `yield_{crop_type}.joblib`, `crop_recommender.joblib`
+- Feature encoders (label encoders, one-hot mappings) saved alongside: `encoders_{model_name}.joblib`
+- Model metadata saved as JSON alongside each model:
+
+**Model metadata file** (`models/yield_wheat_metadata.json`):
+
+```json
+{
+  "model_name": "yield_wheat",
+  "model_type": "XGBRegressor",
+  "crop_type": "wheat",
+  "trained_on": "2026-02-10",
+  "training_data_rows": 4200,
+  "training_data_years": "2018-2024",
+  "features": ["soil_quality_score", "soil_ph", "avg_temperature", "..."],
+  "metrics": {
+    "rmse": 1.12,
+    "mae": 0.85,
+    "r2": 0.72
+  },
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 6,
+    "learning_rate": 0.1
+  }
+}
 ```
 
-**Risk Scoring Formula**:
-```
-rainfall_risk = normalize(rainfall_variance, 0, max_variance) * 50
-price_risk = normalize(price_volatility, 0, max_volatility) * 50
-total_risk = rainfall_risk + price_risk
-```
+### Training Workflow for Each Model
 
-**Mitigation Recommendations** (when risk > 70):
-- High rainfall risk: Consider drought-resistant varieties, irrigation
-- High price risk: Consider forward contracts, crop insurance
+**Yield Predictor** (repeat for each crop: rice, wheat, cotton, sugarcane, soybean):
 
-**Addresses Requirements**: 10.1, 10.2, 10.3, 10.4, 10.5
+1. Filter `crop_yields_india.csv` to crop type
+2. Join with weather + soil data
+3. Run feature engineering
+4. Time-based train/val/test split
+5. Train XGBRegressor with early stopping on validation set
+6. Evaluate on test set
+7. If metrics pass → save model + encoders + metadata
+8. Log training results to `notebooks/03_model_training.ipynb`
 
----
+**Crop Recommender** (single model):
 
-### 10. Monte Carlo Simulator
+1. Combine all crops from yield data
+2. Join with market prices to compute profitability target
+3. Join with soil + weather + subsidy + rotation data
+4. Run feature engineering
+5. Time-based split
+6. Train XGBRegressor
+7. Evaluate ranking metrics (NDCG@5, Precision@5)
+8. If metrics pass → save model + encoders + metadata
 
-**Purpose**: Performs probabilistic profit simulation to quantify uncertainty.
+## API Endpoints
 
-**Interface**:
-```python
-class SimulationResult:
-    crop: CropType
-    iterations: int
-    expected_profit: float  # Mean
-    percentile_10: float  # Worst-case
-    percentile_90: float  # Best-case
-    profit_distribution: List[float]
-    
-class MonteCarloSimulator:
-    def simulate_profit(
-        crop: CropType,
-        yield_estimate: YieldEstimate,
-        price_data: PriceData,
-        iterations: int = 300
-    ) -> SimulationResult
-```
+### POST /api/v1/recommend/crops
 
-**Simulation Logic**:
-1. For each iteration (300 minimum):
-   - Sample yield from normal distribution (mean=expected_yield, std=variance)
-   - Sample price from normal distribution (mean=forecast_price, std=volatility)
-   - Compute profit = (yield × price) - costs
-2. Aggregate results:
-   - Expected profit = mean of all iterations
-   - 10th percentile = worst-case scenario
-   - 90th percentile = best-case scenario
+**Request:**
 
-**Performance Target**: Complete 300 iterations × 3 crops in < 5 seconds
-
-**Addresses Requirements**: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8
-
----
-
-### 11. Allocation Optimizer
-
-**Purpose**: Suggests optimal land allocation percentages among top crops.
-
-**Interface**:
-```python
-class AllocationRecommendation:
-    allocations: Dict[CropType, float]  # Crop -> percentage
-    expected_portfolio_profit: float
-    portfolio_risk: float
-    rationale: str
-    
-class AllocationOptimizer:
-    def optimize_allocation(
-        crops: List[CropType],
-        simulation_results: List[SimulationResult],
-        risk_scores: List[RiskScore],
-        equipment: List[Equipment],
-        total_acreage: float
-    ) -> AllocationRecommendation
+```json
+{
+  "farm_profile": {
+    "state": "Maharashtra",
+    "district": "Pune",
+    "acreage": 5.0,
+    "soil_type": "black",
+    "soil_ph": 7.2,
+    "previous_crop": "rice",
+    "irrigation_available": true,
+    "season": "rabi"
+  }
+}
 ```
 
-**Optimization Formulation**:
-```
-Maximize: Σ(allocation_i × expected_profit_i) - λ × portfolio_risk
-Subject to:
-  - Σ(allocation_i) = 1.0 (100% of acreage)
-  - allocation_i ≥ 0 for all i
-  - equipment_capacity constraints
-  - harvest_conflict constraints
-```
+**Response:**
 
-Where:
-- λ = risk aversion parameter (default 0.3)
-- portfolio_risk = weighted average of individual risk scores
-
-**Solver**: SciPy's `minimize` with SLSQP method
-
-**Addresses Requirements**: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6
-
----
-
-### 12. Recommendation Engine (Orchestrator)
-
-**Purpose**: Coordinates all components to generate ranked crop recommendations.
-
-**Interface**:
-```python
-class CropRecommendation:
-    crop: CropType
-    rank: int
-    profit_score: float
-    risk_score: float
-    yield_estimate: YieldEstimate
-    profit_projection: ProfitProjection
-    simulation_result: SimulationResult
-    rotation_compatibility: RotationCompatibility
-    explanation: RecommendationExplanation
-    
-class RecommendationExplanation:
-    top_profit_factors: List[Tuple[str, float]]
-    top_risk_factors: List[Tuple[str, float]]
-    exclusion_reason: Optional[str]
-    
-class RecommendationEngine:
-    def generate_recommendations(
-        farm_profile: FarmProfile,
-        include_next_season: bool = False
-    ) -> List[CropRecommendation]
+```json
+{
+  "recommendations": [
+    {
+      "rank": 1,
+      "crop_type": "wheat",
+      "profitability_score": 0.89,
+      "estimated_yield": 4.2,
+      "estimated_revenue": 126000,
+      "subsidy_benefit": 15000,
+      "total_projected_income": 141000,
+      "risk_level": "low",
+      "rotation_fit": "good",
+      "confidence": 0.84,
+      "reasoning": "Wheat is an excellent rabi choice after rice on your black soil in Pune. The current MSP of ₹2,275/quintal guarantees a good price, and wheat thrives in your soil pH of 7.2...",
+      "applicable_schemes": [
+        {
+          "scheme_name": "MSP Rabi 2025-26",
+          "benefit": "₹2,275/quintal guaranteed"
+        },
+        {
+          "scheme_name": "PMFBY",
+          "benefit": "Crop insurance at 1.5% premium"
+        }
+      ],
+      "feature_importance": {
+        "rotation_compatibility": 0.22,
+        "msp_available": 0.18,
+        "soil_quality_score": 0.16,
+        "market_price_trend": 0.14,
+        "weather_suitability": 0.12
+      }
+    }
+  ],
+  "method": "ml"
+}
 ```
 
-**Recommendation Pipeline**:
-1. Load farm profile and validate completeness
-2. Fetch weather and price data (with caching)
-3. Filter candidate crops by equipment and soil compatibility
-4. For each candidate crop:
-   - Estimate yield
-   - Calculate profit
-   - Evaluate subsidies
-   - Check rotation compatibility
-   - Compute risk score
-   - Run Monte Carlo simulation
-5. Rank crops by profit score (risk as tiebreaker)
-6. Select top 3 crops
-7. Optimize acreage allocation among top 3
-8. Generate explanations for each recommendation
-9. If next-season enabled: repeat for next season with rotation constraints
+### POST /api/v1/predict/yield
 
-**Performance Target**: Complete pipeline in < 5 seconds
+**Request:**
 
-**Addresses Requirements**: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 11.1, 11.2, 11.3, 11.4, 11.5, 17.1, 17.2, 17.3, 17.4, 17.5
-
----
-
-### 13. Scenario Simulator
-
-**Purpose**: Enables what-if analysis by adjusting parameters and regenerating recommendations.
-
-**Interface**:
-```python
-class ScenarioParameters:
-    price_adjustments: Dict[CropType, float]  # Percentage changes
-    rainfall_adjustment: float  # Percentage change
-    fertilizer_cost_adjustment: float  # Percentage change
-    equipment_changes: List[Equipment]
-    
-class Scenario:
-    scenario_id: str
-    name: str
-    parameters: ScenarioParameters
-    recommendations: List[CropRecommendation]
-    
-class ScenarioSimulator:
-    def create_scenario(
-        farm_profile: FarmProfile,
-        parameters: ScenarioParameters
-    ) -> Scenario
-    
-    def compare_scenarios(
-        scenarios: List[Scenario]
-    ) -> ScenarioComparison
+```json
+{
+  "crop_type": "wheat",
+  "features": {
+    "state": "Maharashtra",
+    "soil_quality_score": 0.78,
+    "soil_ph": 7.2,
+    "avg_temperature": 22.5,
+    "expected_rainfall": 120.0,
+    "irrigation_available": true,
+    "planting_month": 11,
+    "fertilizer_amount": 150.0
+  }
+}
 ```
 
-**Implementation**: Reuses RecommendationEngine with parameter overrides
+**Response:**
 
-**Addresses Requirements**: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6
-
----
-
-### 14. Report Generator
-
-**Purpose**: Generates comprehensive PDF planning reports.
-
-**Interface**:
-```python
-class StrategicReport:
-    farm_profile: FarmProfile
-    recommendations: List[CropRecommendation]
-    allocation: AllocationRecommendation
-    harvest_timeline: List[HarvestWindow]
-    visualizations: List[Chart]
-    
-class ReportGenerator:
-    def generate_report(
-        farm_profile: FarmProfile,
-        recommendations: List[CropRecommendation],
-        allocation: AllocationRecommendation
-    ) -> bytes  # PDF content
+```json
+{
+  "crop_type": "wheat",
+  "estimated_yield": 4.2,
+  "confidence_interval": [3.5, 4.9],
+  "confidence_score": 0.84,
+  "explanation": "Your black soil with pH 7.2 is well-suited for wheat. With irrigation available and good fertilizer application, you can expect around 4.2 tons per hectare...",
+  "feature_importance": {
+    "soil_quality_score": 0.3,
+    "irrigation_available": 0.22,
+    "avg_temperature": 0.18,
+    "fertilizer_amount": 0.15,
+    "expected_rainfall": 0.1
+  },
+  "method": "ml"
+}
 ```
 
-**Report Sections**:
-1. Executive Summary
-2. Farm Profile Overview
-3. Top 3 Crop Recommendations (with explanations)
-4. Profit Projections (with Monte Carlo distributions)
-5. Risk Analysis
-6. Acreage Allocation Strategy
-7. Harvest Timeline Visualization
-8. Subsidy Eligibility Summary
-9. Rotation Recommendations
+### GET /api/v1/subsidies?crop=wheat&state=Maharashtra
 
-**Technology**: ReportLab or WeasyPrint for PDF generation
+**Response:**
 
-**Addresses Requirements**: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7
-
----
-
-### 15. Authentication Service
-
-**Purpose**: Manages user authentication and authorization.
-
-**Interface**:
-```python
-class User:
-    user_id: str
-    email: str
-    password_hash: str
-    role: UserRole  # FARMER or ADVISOR
-    
-class AuthService:
-    def register_user(email: str, password: str) -> User
-    def authenticate(email: str, password: str) -> Optional[str]  # JWT token
-    def validate_token(token: str) -> Optional[User]
-    def logout(token: str) -> None
+```json
+{
+  "crop_type": "wheat",
+  "state": "Maharashtra",
+  "schemes": [
+    {
+      "scheme_name": "MSP Rabi 2025-26",
+      "scheme_type": "msp",
+      "benefit_amount": 2275,
+      "benefit_type": "per_quintal",
+      "eligibility_notes": "All wheat farmers selling through designated procurement centers"
+    },
+    {
+      "scheme_name": "PMFBY",
+      "scheme_type": "insurance",
+      "benefit_amount": 1.5,
+      "benefit_type": "percentage",
+      "eligibility_notes": "Premium of 1.5% for rabi crops; covers natural calamities"
+    }
+  ]
+}
 ```
 
-**Security**:
-- Password hashing: bcrypt with salt
-- JWT tokens with 24-hour expiration
-- Session timeout: 30 minutes of inactivity
-- TLS encryption for all API calls
+### POST /api/v1/chat
 
-**Addresses Requirements**: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6
+**Request:**
 
----
-
-### 16. Analytics Dashboard (Advisor Mode)
-
-**Purpose**: Provides aggregate analytics for agricultural advisors managing multiple farms.
-
-**Interface**:
-```python
-class AggregateAnalytics:
-    total_farms: int
-    avg_profit_by_crop: Dict[CropType, float]
-    risk_distribution: Dict[str, int]  # Risk bucket -> count
-    subsidy_utilization_rate: float
-    
-class AnalyticsDashboard:
-    def get_aggregate_analytics(
-        advisor_id: str,
-        filters: AnalyticsFilters
-    ) -> AggregateAnalytics
-    
-    def export_analytics(
-        advisor_id: str,
-        format: str  # CSV or JSON
-    ) -> bytes
+```json
+{
+  "message": "I grew rice last kharif in Pune. What should I grow this rabi?",
+  "session_id": "farmer_001"
+}
 ```
 
-**Addresses Requirements**: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6
+**Response:**
 
----
-
-## Data Models
-
-### Farm Profile
-```python
-@dataclass
-class FarmProfile:
-    farm_id: str
-    user_id: str
-    location: GeoLocation
-    total_acreage: float
-    soil_type: SoilType
-    equipment: List[Equipment]
-    crop_history: List[CropRecord]
-    created_at: datetime
-    updated_at: datetime
+```json
+{
+  "reply": "Great question! After rice in Pune, wheat is your best rabi option. Here's why:\n\n1. **Rotation benefit**: Wheat after rice is one of the best rotation pairs — rice enriches the soil with organic matter that wheat loves.\n2. **MSP guarantee**: Wheat has MSP of ₹2,275/quintal this season, so your price is protected.\n3. **Your soil**: Black soil with good pH is ideal for wheat.\n\nYou can expect around 4.2 tons/hectare, which translates to roughly ₹1.4 lakhs income on your 5 hectares.\n\nWant me to compare this with other rabi options like chickpea or mustard?",
+  "follow_up_suggestions": [
+    "How does chickpea compare?",
+    "What subsidies are available for wheat?",
+    "What yield can I expect?"
+  ],
+  "tools_used": ["recommend_crops", "lookup_subsidies"]
+}
 ```
-
-### Crop Record
-```python
-@dataclass
-class CropRecord:
-    crop: CropType
-    year: int
-    acreage: float
-    yield_per_acre: float
-    profit_per_acre: float
-```
-
-### Crop Knowledge Base Entry
-```python
-@dataclass
-class CropKnowledge:
-    crop: CropType
-    baseline_yield: Dict[SoilType, float]
-    optimal_rainfall: Tuple[float, float]  # (min, max) inches
-    optimal_temperature: Tuple[float, float]  # (min, max) °F
-    required_equipment: List[Equipment]
-    seed_cost_per_acre: float
-    fertilizer_cost_per_acre: Dict[SoilType, float]
-    labor_hours_per_acre: float
-    harvest_window: Tuple[int, int]  # (start_day, end_day) from planting
-    crop_family: str  # For rotation planning
-```
-
-### Enums
-```python
-class SoilType(Enum):
-    CLAY = "clay"
-    LOAM = "loam"
-    SANDY = "sandy"
-    SILT = "silt"
-
-class Equipment(Enum):
-    TRACTOR = "tractor"
-    COMBINE = "combine"
-    PLANTER = "planter"
-    SPRAYER = "sprayer"
-    IRRIGATION = "irrigation"
-
-class CropType(Enum):
-    CORN = "corn"
-    SOYBEANS = "soybeans"
-    WHEAT = "wheat"
-    COTTON = "cotton"
-    RICE = "rice"
-    # ... additional crops
-
-class UserRole(Enum):
-    FARMER = "farmer"
-    ADVISOR = "advisor"
-```
-
-## Correctness Properties
-
-*A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
-
-
-### Property Reflection
-
-After analyzing all acceptance criteria, I've identified several areas where properties can be consolidated:
-
-**Redundancy Elimination**:
-1. Properties 1.1-1.5 (farm profile management) can be consolidated into fewer properties focusing on CRUD operations and data isolation
-2. Properties 5.1-5.5 and 6.1-6.5 (yield and profit calculations) overlap - both test that calculations include required inputs
-3. Properties 13.1-13.7 (Monte Carlo simulation) can be consolidated into properties about sampling behavior and statistical correctness
-4. Properties 15.2-15.5 (report content) are all testing the same thing - report completeness - and can be combined
-5. Properties 17.1-17.4 (explanations) all test explanation completeness and can be consolidated
-
-**Consolidated Property Strategy**:
-- Focus on high-value properties that validate core correctness
-- Combine similar validation checks into comprehensive properties
-- Prioritize properties that catch real bugs (round-trips, invariants, constraint satisfaction)
-- Keep properties that validate critical business logic (profit calculation, risk scoring, allocation optimization)
-
-### Core Correctness Properties
-
-Property 1: Farm Profile Round-Trip Persistence
-*For any* valid farm profile, creating and then retrieving the profile should return an equivalent profile with all fields preserved.
-**Validates: Requirements 1.1, 1.4**
-
-Property 2: Farm Profile Validation Rejects Invalid Inputs
-*For any* farm profile with out-of-range values (negative acreage, invalid coordinates, empty equipment list), validation should reject the profile and identify the specific invalid fields.
-**Validates: Requirements 1.2, 1.3**
-
-Property 3: Multi-Farm Data Isolation
-*For any* two distinct farm profiles belonging to different users, operations on one profile should never affect the other profile's data.
-**Validates: Requirements 1.5, 16.6**
-
-Property 4: Historical Data Minimum Coverage
-*For any* location where data is available, retrieved historical climate and price data should span at least 3 years.
-**Validates: Requirements 2.2, 3.2**
-
-Property 5: Equipment Compatibility Filtering
-*For any* farm profile with a specific equipment set, all recommended crops must be compatible with that equipment set (no crop should require equipment not in the farm's inventory).
-**Validates: Requirements 4.2**
-
-Property 6: Soil Type Compatibility Filtering
-*For any* farm profile with a specific soil type, all recommended crops must be suitable for that soil type.
-**Validates: Requirements 4.3**
-
-Property 7: Recommendation Count Invariant
-*For any* valid farm profile with at least 3 compatible crops, the recommendation engine should return exactly 3 crop recommendations.
-**Validates: Requirements 4.1**
-
-Property 8: Profit Score Tiebreaker
-*For any* two crops with identical profit scores, the crop with the lower risk score should be ranked higher.
-**Validates: Requirements 4.5**
-
-Property 9: Profit Calculation Completeness
-*For any* crop recommendation, the profit score must incorporate yield estimate, market price, seed cost, fertilizer cost, labor cost, equipment cost, and applicable subsidies.
-**Validates: Requirements 4.4, 6.2, 6.3**
-
-Property 10: Yield Estimate Sensitivity to Inputs
-*For any* crop, changing soil type, weather data, or historical yield data should produce a different yield estimate (unless the change is to equivalent values).
-**Validates: Requirements 5.2, 5.3**
-
-Property 11: Suboptimal Soil Reduces Yield
-*For any* crop, the yield estimate for suboptimal soil should be lower than the yield estimate for optimal soil, holding all other factors constant.
-**Validates: Requirements 5.5**
-
-Property 12: Confidence Intervals Present
-*For any* yield estimate, confidence intervals (lower and upper bounds) must be present and the lower bound must be less than the upper bound.
-**Validates: Requirements 5.4**
-
-Property 13: Subsidy Acreage Threshold Enforcement
-*For any* subsidy program with a minimum acreage requirement, farms below the threshold should not be marked as eligible for that program.
-**Validates: Requirements 7.2**
-
-Property 14: Crop Rotation Family Constraint
-*For any* farm with crop history, if the most recent crop belongs to family F, then no recommended crop for the current season should belong to family F.
-**Validates: Requirements 8.4**
-
-Property 15: Rotation Compatibility Affects Ranking
-*For any* two crops with similar profit scores, the crop with better rotation compatibility (higher soil health impact) should be ranked higher or equally.
-**Validates: Requirements 8.1, 8.2**
-
-Property 16: Harvest Conflict Detection
-*For any* set of crops with overlapping harvest windows, the system should detect and flag the conflict.
-**Validates: Requirements 9.1, 9.2**
-
-Property 17: Harvest Conflict Resolution
-*For any* unresolvable harvest conflict (equipment/labor capacity exceeded), the final crop recommendations should not contain the conflicting combination.
-**Validates: Requirements 9.4**
-
-Property 18: Risk Score Range Invariant
-*For any* crop, the computed risk score must fall within the range [0, 100].
-**Validates: Requirements 10.4**
-
-Property 19: Risk Score Components
-*For any* crop, the risk score must be influenced by both rainfall variability and price volatility (changing either should change the risk score).
-**Validates: Requirements 10.2, 10.3**
-
-Property 20: High Risk Triggers Mitigation Recommendations
-*For any* crop with a risk score exceeding 70, the system must provide at least one specific risk mitigation recommendation.
-**Validates: Requirements 10.5**
-
-Property 21: Next-Season Planning Generates Two-Season Recommendations
-*For any* farm profile with next-season planning enabled, the system should generate recommendations for both the current season and the next season.
-**Validates: Requirements 11.2**
-
-Property 22: Two-Season Rotation Constraint
-*For any* two-season plan, the next-season crop should not belong to the same family as the current-season crop.
-**Validates: Requirements 11.3**
-
-Property 23: Scenario Parameter Sensitivity
-*For any* scenario with adjusted parameters (price, rainfall, fertilizer cost, equipment), the recommendations should differ from the baseline scenario (unless the adjustment has no effect on crop viability).
-**Validates: Requirements 12.1, 12.2, 12.3, 12.4**
-
-Property 24: Scenario Persistence
-*For any* saved scenario, retrieving the scenario should return the same parameters and recommendations.
-**Validates: Requirements 12.5**
-
-Property 25: Monte Carlo Minimum Iterations
-*For any* crop, the Monte Carlo simulation should perform at least 300 iterations.
-**Validates: Requirements 13.1**
-
-Property 26: Monte Carlo Sampling Within Variance
-*For any* crop simulation, all sampled yield values should fall within the defined variance range (mean ± 3 standard deviations), and similarly for price values.
-**Validates: Requirements 13.2, 13.3**
-
-Property 27: Monte Carlo Statistical Correctness
-*For any* simulation result with N iterations, the expected profit should equal the mean of all iteration profits, the 10th percentile should be ≤ 10% of iterations, and the 90th percentile should be ≥ 90% of iterations.
-**Validates: Requirements 13.4, 13.5, 13.6**
-
-Property 28: Allocation Sums to 100%
-*For any* allocation recommendation, the sum of all crop allocation percentages must equal 100% (within floating-point tolerance of 0.01%).
-**Validates: Requirements 14.1, 14.3**
-
-Property 29: Allocation Respects Equipment Constraints
-*For any* allocation recommendation, the total equipment hours required across all allocated crops must not exceed available equipment capacity.
-**Validates: Requirements 14.4**
-
-Property 30: Allocation Balances Profit and Risk
-*For any* allocation recommendation, increasing the allocation to higher-risk crops should correspond to higher expected portfolio profit, and vice versa.
-**Validates: Requirements 14.2**
-
-Property 31: Report Content Completeness
-*For any* generated strategic report, it must contain all required sections: crop recommendations, profit projections, risk scores, yield estimates, market prices, subsidy details, rotation recommendations, harvest timeline, and profit distributions.
-**Validates: Requirements 15.2, 15.3, 15.4, 15.5**
-
-Property 32: Password Strength Enforcement
-*For any* password that fails to meet minimum security standards (length < 8, no uppercase, no lowercase, no digit, no special character), account creation should be rejected.
-**Validates: Requirements 16.1**
-
-Property 33: Authentication Correctness
-*For any* user account, authentication with correct credentials should succeed and return a valid token, while authentication with incorrect credentials should fail.
-**Validates: Requirements 16.2**
-
-Property 34: Authorization Enforcement
-*For any* user attempting to access farm data, access should be granted only if the farm belongs to that user or the user is an advisor managing that farm.
-**Validates: Requirements 16.6**
-
-Property 35: Explanation Completeness
-*For any* crop recommendation, the explanation must identify the top 3 factors influencing profit score and the top 3 factors influencing risk score.
-**Validates: Requirements 17.1, 17.2, 17.3**
-
-Property 36: Exclusion Explanation
-*For any* crop excluded from recommendations due to incompatibility (equipment, soil, rotation), the system must provide a specific exclusion reason.
-**Validates: Requirements 17.4**
-
-Property 37: Advisor Analytics Aggregation
-*For any* agricultural advisor managing N farms, aggregate analytics should compute statistics across all N farms (average profit, risk distribution, subsidy utilization).
-**Validates: Requirements 18.1, 18.2, 18.3, 18.4**
-
-Property 38: Advisor Analytics Filtering
-*For any* advisor analytics with applied filters (region, farm size, crop type), the results should include only farms matching all filter criteria.
-**Validates: Requirements 18.5**
 
 ## Error Handling
 
-### Error Categories
+### Fallback Chain
 
-**1. External API Failures**
-- Weather API unavailable: Fall back to regional averages, notify user
-- Price API unavailable: Use conservative historical averages or exclude crop
-- Timeout handling: 10-second timeout for external calls, retry once
-
-**2. Data Validation Errors**
-- Invalid farm profile: Return detailed validation errors with field names
-- Missing required fields: Prevent recommendation generation, list missing fields
-- Out-of-range values: Reject with specific range requirements
-
-**3. Constraint Satisfaction Failures**
-- No compatible crops: Inform user that equipment or soil constraints are too restrictive
-- Unresolvable harvest conflicts: Adjust recommendations or inform user of trade-offs
-- Insufficient acreage for subsidies: Flag in subsidy evaluation
-
-**4. Computation Errors**
-- Monte Carlo simulation failure: Log error, fall back to deterministic profit calculation
-- Optimization failure: Fall back to simple ranking by profit score
-- Numerical instability: Use robust numerical methods, validate intermediate results
+| Component                | Primary         | Fallback                                |
+| ------------------------ | --------------- | --------------------------------------- |
+| Crop Recommender         | XGBoost model   | Rule-based ranking (existing)           |
+| Yield Predictor          | XGBoost model   | Statistical baseline (existing)         |
+| LLM Explainer            | LLM API         | Template-based explanation              |
+| Conversational Interface | LangChain + LLM | Structured error message                |
+| Subsidy Lookup           | CSV dataset     | Empty list with "data unavailable" note |
 
 ### Error Response Format
 
-```python
-class ErrorResponse:
-    error_code: str
-    message: str
-    details: Dict[str, Any]
-    recoverable: bool
-    suggested_action: Optional[str]
+```json
+{
+  "error": {
+    "code": "MODEL_NOT_FOUND",
+    "message": "No trained model found for crop type 'quinoa'",
+    "fallback_used": true,
+    "fallback_method": "statistical_baseline"
+  }
+}
 ```
-
-### Logging Strategy
-
-- Log all external API calls with latency metrics
-- Log all validation failures with user context
-- Log all optimization failures with input parameters
-- Use structured logging (JSON format) for easy parsing
 
 ## Testing Strategy
 
-### Dual Testing Approach
+**Unit Tests (pytest):**
 
-AgriPlan AI requires both unit testing and property-based testing for comprehensive coverage:
+1. Feature pipeline produces correct output shapes and handles missing values
+2. Yield predictor returns valid predictions (positive values, valid confidence intervals)
+3. Crop recommender returns results sorted by profitability score
+4. Subsidy lookup returns correct schemes for crop + state combinations
+5. Rotation matrix applies correct penalties/boosts
+6. LLM explainer template fallback works when API is unavailable
+7. API endpoints return correct HTTP status codes and response schemas
 
-**Unit Tests**: Focus on specific examples, edge cases, and integration points
-- Example: Test that corn with optimal soil and weather produces expected yield
-- Example: Test that weather API fallback works when primary API is down
-- Example: Test that PDF report generation produces valid PDF format
-- Edge cases: Empty crop history, single equipment type, extreme weather values
+**Integration Tests:**
 
-**Property-Based Tests**: Verify universal properties across all inputs
-- Generate random farm profiles, weather data, price data
-- Verify properties hold for all generated inputs
-- Catch edge cases that humans might miss
+1. End-to-end: API request → feature pipeline → ML prediction → subsidy enrichment → LLM explanation → response
+2. Fallback: ML unavailable → statistical baseline returns valid results
+3. Chat: Natural language query → intent classification → correct tool invoked → formatted response
 
-### Property-Based Testing Configuration
+## Project Structure
 
-**Library**: Hypothesis (Python)
-
-**Test Configuration**:
-- Minimum 100 iterations per property test
-- Each test tagged with feature name and property number
-- Tag format: `# Feature: agriplan-ai, Property N: [property description]`
-
-**Example Property Test Structure**:
-```python
-from hypothesis import given, strategies as st
-
-@given(
-    farm_profile=st.builds(FarmProfile, ...),
-    weather_data=st.builds(WeatherData, ...)
-)
-def test_property_5_equipment_compatibility(farm_profile, weather_data):
-    """
-    Feature: agriplan-ai, Property 5: Equipment Compatibility Filtering
-    For any farm profile with a specific equipment set, all recommended 
-    crops must be compatible with that equipment set.
-    """
-    recommendations = recommendation_engine.generate_recommendations(farm_profile)
-    
-    for rec in recommendations:
-        crop_requirements = crop_knowledge_base.get_equipment_requirements(rec.crop)
-        assert all(req in farm_profile.equipment for req in crop_requirements)
+```
+AgriPlan-AI/
+├── app/
+│   ├── __init__.py
+│   ├── main.py                    # FastAPI entry point
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── routes_recommend.py    # /recommend/crops
+│   │   ├── routes_predict.py      # /predict/yield
+│   │   ├── routes_chat.py         # /chat
+│   │   └── routes_subsidies.py    # /subsidies
+│   ├── ml/
+│   │   ├── __init__.py
+│   │   ├── crop_recommender.py    # CropRecommender
+│   │   ├── yield_predictor.py     # YieldPredictor
+│   │   └── feature_pipeline.py    # FeaturePipeline
+│   ├── llm/
+│   │   ├── __init__.py
+│   │   ├── explainer.py           # LLMExplainer
+│   │   └── conversational.py      # ConversationalInterface
+│   ├── data/
+│   │   ├── __init__.py
+│   │   └── subsidy_lookup.py      # SubsidyLookup
+│   ├── baseline/
+│   │   └── statistical.py         # Existing statistical methods (wrapper)
+│   └── models.py                  # Pydantic models / dataclasses
+├── prompts/
+│   ├── crop_recommendation.txt
+│   ├── yield_explanation.txt
+│   ├── chat_system_prompt.txt
+│   └── subsidy_summary.txt
+├── data/
+│   ├── crop_yields_india.csv      # Historical yield data by state/crop
+│   ├── market_prices.csv          # Mandi price data
+│   ├── subsidies.csv              # Government schemes & MSP rates
+│   ├── soil_data.csv              # Soil characteristics by region
+│   ├── weather_historical.csv     # Historical weather by district
+│   └── rotation_matrix.csv        # Crop rotation compatibility
+├── models/                        # Serialized model files
+│   ├── yield_rice.joblib
+│   ├── yield_wheat.joblib
+│   ├── yield_cotton.joblib
+│   ├── yield_sugarcane.joblib
+│   ├── yield_soybean.joblib
+│   ├── crop_recommender.joblib
+│   └── *_metadata.json            # Model metadata files
+├── notebooks/
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_feature_engineering.ipynb
+│   └── 03_model_training.ipynb
+├── tests/
+│   ├── test_crop_recommender.py
+│   ├── test_yield_predictor.py
+│   ├── test_subsidy_lookup.py
+│   ├── test_explainer.py
+│   └── test_api.py
+├── frontend/
+│   └── app.py                     # Streamlit dashboard
+├── .env.example
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+└── README.md
 ```
 
-### Test Data Generators
+## Workstream Breakdown
 
-**Hypothesis Strategies**:
-- `farm_profile_strategy`: Generates valid farm profiles with random locations, acreage, soil types, equipment
-- `weather_data_strategy`: Generates weather data with realistic ranges
-- `price_data_strategy`: Generates price data with realistic volatility
-- `crop_history_strategy`: Generates crop history sequences
+### Dev 1: ML — Yield Predictor + Training Pipeline
 
-### Integration Testing
+- Source and explore Indian crop yield datasets
+- Feature engineering for yield prediction
+- Train XGBoost yield models per crop (rice, wheat, cotton, sugarcane, soybean)
+- Implement YieldPredictor with predict/train/fallback
+- Write unit tests
 
-**Key Integration Points**:
-1. Weather API integration: Mock API responses, test fallback behavior
-2. Price API integration: Mock API responses, test caching
-3. Database persistence: Test CRUD operations with PostgreSQL
-4. PDF generation: Test report generation with sample data
-5. Authentication flow: Test JWT token generation and validation
+### Dev 2: ML — Crop Recommender + Feature Pipeline
 
-### Performance Testing
+- Implement FeaturePipeline combining all data sources
+- Build crop rotation matrix
+- Train multi-factor crop recommendation model
+- Implement CropRecommender with subsidy integration
+- Implement SubsidyLookup service
+- Write unit tests
 
-**Performance Targets**:
-- Recommendation generation: < 5 seconds
-- Monte Carlo simulation (300 iterations × 3 crops): < 5 seconds
-- Report generation: < 10 seconds
-- Scenario regeneration: < 5 seconds
+### Dev 3: LLM + Conversational Interface
 
-**Load Testing**:
-- Simulate 100 concurrent users
-- Verify response times remain within targets
-- Monitor database connection pool usage
-- Monitor external API rate limits
+- Set up LLM SDK integration
+- Write and iterate on prompt templates for crop/yield explanations
+- Implement LLMExplainer with template fallback
+- Implement ConversationalInterface with LangChain
+- Register all tools in LangChain agent
+- Curate subsidy/scheme dataset
+- Write tests with mocked LLM responses
 
-### Test Coverage Goals
+### Dev 4: API + Frontend + Integration
 
-- Line coverage: > 80%
-- Branch coverage: > 75%
-- Property test coverage: All 38 properties implemented
-- Integration test coverage: All external integrations tested
-
-## Deployment Architecture
-
-### MVP Deployment (Hackathon)
-
-**Infrastructure**:
-- Single AWS EC2 instance (t3.medium) for backend
-- PostgreSQL RDS instance (db.t3.micro)
-- Redis ElastiCache for caching
-- S3 bucket for PDF report storage
-- CloudFront for frontend static assets
-
-**Containerization**:
-- Docker containers for backend services
-- Docker Compose for local development
-- Simple deployment script for EC2
-
-### Future Production Deployment
-
-**Scalability Enhancements**:
-- AWS Lambda for recommendation engine (serverless)
-- API Gateway for request routing
-- DynamoDB for farm profiles (NoSQL scalability)
-- SQS for asynchronous report generation
-- Auto-scaling groups for backend services
-
-## Development Timeline (2-3 Weeks, 4-Person Team)
-
-### Week 1: Core Infrastructure
-- **Person 1**: Database schema, farm profile CRUD, authentication
-- **Person 2**: Weather and price API integration, caching layer
-- **Person 3**: Crop knowledge base, yield estimator, profit calculator
-- **Person 4**: Frontend scaffolding, farm profile UI
-
-### Week 2: Recommendation Logic
-- **Person 1**: Recommendation engine orchestration, constraint filtering
-- **Person 2**: Risk analyzer, rotation planner, subsidy evaluator
-- **Person 3**: Monte Carlo simulator, allocation optimizer
-- **Person 4**: Recommendation display UI, visualization components
-
-### Week 3: Polish and Testing
-- **Person 1**: Report generator, scenario simulator
-- **Person 2**: Harvest conflict detector, explainability module
-- **Person 3**: Property-based tests, integration tests
-- **Person 4**: UI polish, advisor dashboard, deployment
-
-### Deferred Features (Post-Hackathon)
-- Multi-season optimization beyond 2 seasons
-- Advanced ML-based price forecasting
-- Mobile app
-- Real-time weather alerts
-- Collaborative planning for cooperatives
-
-## Extensibility Points
-
-### Adding New Crops
-1. Add crop entry to crop knowledge base (JSON/YAML config)
-2. Define baseline yields for each soil type
-3. Define optimal weather ranges
-4. Define equipment requirements
-5. Define harvest window
-6. No code changes required
-
-### Adding New Subsidy Programs
-1. Add subsidy rule to configuration file
-2. Define eligibility criteria (crop types, min acreage, conditions)
-3. Define subsidy amount calculation
-4. No code changes required
-
-### Adding New Data Sources
-1. Implement `DataIntegration` interface
-2. Register integration in configuration
-3. System automatically uses new source
-
-### Adding New Optimization Objectives
-1. Extend `AllocationOptimizer` with new objective function
-2. Add configuration parameter for objective selection
-3. Minimal code changes in optimizer module
-
-## Security Considerations
-
-**Authentication**:
-- bcrypt password hashing with salt (cost factor 12)
-- JWT tokens with 24-hour expiration
-- Refresh token mechanism for extended sessions
-
-**Authorization**:
-- Role-based access control (FARMER, ADVISOR)
-- Farm-level permissions (owner or managed-by relationship)
-- API endpoint authorization middleware
-
-**Data Protection**:
-- PostgreSQL encryption at rest (AWS RDS encryption)
-- TLS 1.3 for all API communications
-- Sensitive data (passwords) never logged
-- PII (farm locations) encrypted in database
-
-**API Security**:
-- Rate limiting: 100 requests per minute per user
-- Input validation on all endpoints
-- SQL injection prevention (parameterized queries)
-- XSS prevention (output encoding)
-
-## Monitoring and Observability
-
-**Metrics**:
-- Request latency (p50, p95, p99)
-- Error rates by endpoint
-- External API success rates
-- Database query performance
-- Cache hit rates
-
-**Logging**:
-- Structured JSON logs
-- Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
-- Correlation IDs for request tracing
-- User context in all logs (user_id, farm_id)
-
-**Alerting**:
-- High error rate (> 5%)
-- Slow response times (> 10 seconds)
-- External API failures
-- Database connection pool exhaustion
-
-## Conclusion
-
-This design provides a comprehensive, modular architecture for AgriPlan AI that balances hackathon MVP constraints with long-term extensibility. The focus on property-based testing ensures correctness of core business logic, while the clear separation of concerns enables rapid iteration and future enhancements.
-
-Key design strengths:
-1. **Probabilistic reasoning** via Monte Carlo simulation provides realistic profit projections
-2. **Constraint-based optimization** ensures recommendations respect real-world limitations
-3. **Explainability** builds user trust through transparent factor attribution
-4. **Modularity** enables independent development and testing of components
-5. **Extensibility** supports adding new crops, subsidies, and data sources without code changes
-
-The 38 correctness properties provide a strong foundation for automated testing, ensuring the system behaves correctly across a wide range of inputs and scenarios.
+- Set up FastAPI project structure and all endpoints
+- Build Streamlit dashboard (farm profile form, recommendation cards, yield charts, chat panel)
+- Docker setup
+- Integration testing across all components
+- Documentation and README
